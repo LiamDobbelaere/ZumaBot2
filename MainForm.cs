@@ -144,42 +144,31 @@ namespace ZumaBot2 {
             Cv2.WaitKey();
         }
 
+        private void ColorDetectionLoadInto(List<Color> colorMatchers, List<Color> fixedColors, Color target, string assetName) {
+            string fullPath = GetAssetPath(assetName);
+
+            Bitmap bmp = new Bitmap(fullPath);
+
+            for (int y = 0; y < bmp.Height; y++) {
+                for (int x = 0; x < bmp.Width; x++) {
+                    Color c = bmp.GetPixel(x, y);
+
+                    colorMatchers.Add(c);
+                    fixedColors.Add(target);
+                }
+            }
+        }
+
         private void CaptureThread() {
             using Graphics g = Graphics.FromImage(gameWindow);
-            Color[] colorMatchers = new Color[] {
-                // Blues
-                ColorTranslator.FromHtml("#40f9ff"),
-                ColorTranslator.FromHtml("#3d3dbe"),
+            List<Color> colorMatchers = new List<Color>();
+            List<Color> fixedColors = new List<Color>();
 
-                // Greens
-                ColorTranslator.FromHtml("#48fb67"),
-                ColorTranslator.FromHtml("#388047"),
-
-                // Yellows
-                ColorTranslator.FromHtml("#fffe2d"),
-                ColorTranslator.FromHtml("#a77c17"),
-
-                // Violets
-                ColorTranslator.FromHtml("#ff9dff"),
-                ColorTranslator.FromHtml("#a613b2"),
-
-                // Reds
-                ColorTranslator.FromHtml("#dc7e6e"),
-                ColorTranslator.FromHtml("#ae0812")
-            };
-
-            Color[] fixedColors = new Color[] {
-                Color.Blue,
-                Color.Blue,
-                Color.Green,
-                Color.Green,
-                Color.Yellow,
-                Color.Yellow,
-                Color.Violet,
-                Color.Violet,
-                Color.Red,
-                Color.Red
-            };
+            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Red, "ct_red.png");
+            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Green, "ct_green.png");
+            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Blue, "ct_blue.png");
+            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Yellow, "ct_yellow.png");
+            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Violet, "ct_violet.png");
 
             while (true) {
                 g.CopyFromScreen(windowLocation.X, windowLocation.Y, 0, 0, gameWindow.Size);
@@ -203,9 +192,13 @@ namespace ZumaBot2 {
                 // Get largest connected component (the ball chain)
                 ConnectedComponents cc = Cv2.ConnectedComponentsEx(mGame, PixelConnectivity.Connectivity4);
                 using Mat mGameLargestBlob = new Mat();
+                if (cc.Blobs.Count == 0) {
+                    continue;
+                }
+
                 cc.FilterByBlob(mGame, mGameLargestBlob, cc.GetLargestBlob());
 
-                // Create a composite of the previous stap (binary largest blob image + original color)
+                // Create a composite of the previous step (binary largest blob image + original color)
                 Cv2.BitwiseAnd(mGameColor, mGameLargestBlob.CvtColor(ColorConversionCodes.GRAY2BGR), mGameColor);
 
                 // Color them ballz
@@ -219,7 +212,7 @@ namespace ZumaBot2 {
                         Color usedColor = Color.Orange;
                         int usedColorIndex = -1;
                         float lowestDistance = float.MaxValue;
-                        for (int k = 0; k < colorMatchers.Length; k++) {
+                        for (int k = 0; k < colorMatchers.Count; k++) {
                             Color cs = colorMatchers[k];
 
                             float colorDist = MathF.Sqrt(
