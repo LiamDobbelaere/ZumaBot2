@@ -80,70 +80,6 @@ namespace ZumaBot2 {
             }
         }
 
-        private void Capture() {
-            /*Bitmap screen = new Bitmap(640, 480, PixelFormat.Format32bppRgb);
-            using (Graphics g = Graphics.FromImage(screen)) {
-                g.CopyFromScreen(2922 % 1920, 577, 0, 0, screen.Size);
-            }*/
-
-            using var src = Cv2.ImRead(GetAssetPath("gamescreen_2.png"))//screen.ToMat()
-                .CvtColor(ColorConversionCodes.RGB2HSV)
-                .ExtractChannel(1)
-                .Threshold(100, 255, ThresholdTypes.Binary);
-            using var tpl = Cv2.ImRead(GetAssetPath("blue_ball.png")).ExtractChannel(0);
-            using var dst = Cv2.ImRead(GetAssetPath("gamescreen_2.png"));
-
-            Cv2.FilterSpeckles(src, 0, 16, 8);
-
-            Mat kernel = Cv2.GetStructuringElement(MorphShapes.Ellipse, new OpenCvSharp.Size(8, 8));
-            Cv2.MorphologyEx(src, src, MorphTypes.Close, kernel);
-
-            ConnectedComponents cc = Cv2.ConnectedComponentsEx(src, PixelConnectivity.Connectivity4);
-            Mat outp = new Mat();
-            cc.FilterByBlob(src, outp, cc.GetLargestBlob());
-
-            Cv2.BitwiseAnd(dst, outp.CvtColor(ColorConversionCodes.GRAY2BGR), dst);
-
-            Color[] colorMatchers = new Color[] {
-                Color.FromArgb(223, 127, 105),
-                Color.FromArgb(57, 255, 78),
-                Color.FromArgb(49, 193, 254),
-                Color.FromArgb(254, 142, 252),
-                Color.FromArgb(255, 255, 24)
-            };
-
-            CircleSegment[] circles = Cv2.HoughCircles(outp, HoughModes.Gradient, 5, 20, 30, 35, 0, 20);
-            var dstclone = dst.Clone();
-            foreach (CircleSegment segment in circles) {
-                int col = outp.At<int>((int)segment.Center.Y, (int)segment.Center.X);
-
-                if (col < 0) {
-                    Vec3b ccol = dst.At<Vec3b>((int)segment.Center.Y, (int)segment.Center.X);
-                    Color ccolAsColor = Color.FromArgb(ccol[2], ccol[1], ccol[0]);
-                    Color usedColor = Color.Orange;
-                    float lowestDistance = float.MaxValue;
-                    foreach (Color cs in colorMatchers) {
-                        float colorDist = MathF.Sqrt(
-                            MathF.Pow(ccolAsColor.R - cs.R, 2) +
-                            MathF.Pow(ccolAsColor.G - cs.G, 2) +
-                            MathF.Pow(ccolAsColor.B - cs.B, 2)
-                        );
-
-                        if (colorDist < lowestDistance) {
-                            usedColor = cs;
-                            lowestDistance = colorDist;
-                        }
-                    }
-
-
-                    Cv2.Circle(dstclone, (int)segment.Center.X, (int)segment.Center.Y, (int)segment.Radius, new Scalar(usedColor.B, usedColor.G, usedColor.R), 2);
-                }
-            }
-
-            Cv2.ImShow("out", dstclone);
-            Cv2.WaitKey();
-        }
-
         private void ColorDetectionLoadInto(List<Color> colorMatchers, List<Color> fixedColors, Color target, string assetName) {
             string fullPath = GetAssetPath(assetName);
 
@@ -157,6 +93,47 @@ namespace ZumaBot2 {
                     fixedColors.Add(target);
                 }
             }
+        }
+
+        private void CDTester(Mat original) {
+            using var mFrogTemplate = new Mat(GetAssetPath("frog.png"));
+
+            Dictionary<string, int> selParams = new Dictionary<string, int>();
+            selParams["blockSize"] = 8;
+            selParams["k"] = 1;
+
+            using ORB orb = ORB.Create();
+            KeyPoint[] kpO;
+            using var oaO = new Mat();
+
+            KeyPoint[] kpT;
+            using var oaT = new Mat();
+
+            orb.DetectAndCompute(mFrogTemplate, null, out kpT, oaT);
+            orb.DetectAndCompute(original, null, out kpO, oaO);
+
+            using var bfm = BFMatcher.Create("BruteForce-Hamming");
+            var matches = bfm.Match(oaT, oaO);
+
+            var orderedMatches = matches; //matches.OrderBy((k) => k.Distance).Take(10).ToArray();
+            MessageBox.Show(orderedMatches.Length.ToString());
+
+            using var mFinalOut = new Mat();
+            Cv2.DrawMatches(mFrogTemplate, kpT, original, kpO, orderedMatches, mFinalOut);
+            Cv2.ImShow("out2", mFinalOut);
+
+            /*var createCb = (string key) => new TrackbarCallbackNative((int v, IntPtr ptr) => {
+                selParams[key] = v;
+            */
+
+
+            //});
+
+            /*new Window("Settings");
+            Cv2.CreateTrackbar("blockSize", "Settings", 250, createCb("blockSize"));
+            Cv2.CreateTrackbar("k", "Settings", 250, createCb("k"));*/
+
+            Cv2.WaitKey(defaultFrameDelay);
         }
 
         private void CaptureThread() {
@@ -181,6 +158,9 @@ namespace ZumaBot2 {
                     .CvtColor(ColorConversionCodes.RGB2HSV)
                     .ExtractChannel(1)
                     .Threshold(100, 255, ThresholdTypes.Binary);
+
+
+                CDTester(mGameColor);
 
                 // Get rid of small noise speckles
                 Cv2.FilterSpeckles(mGame, 0, 16, 8);
