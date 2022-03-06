@@ -38,13 +38,39 @@ namespace ZumaBot2 {
 
             Cv2.BitwiseAnd(dst, outp.CvtColor(ColorConversionCodes.GRAY2BGR), dst);
 
-            CircleSegment[] circles = Cv2.HoughCircles(outp, HoughModes.Gradient, 5, 20, 30, 36, 0, 20);
+            Color[] colorMatchers = new Color[] {
+                Color.FromArgb(223, 127, 105),
+                Color.FromArgb(57, 255, 78),
+                Color.FromArgb(49, 193, 254),
+                Color.FromArgb(254, 142, 252),
+                Color.FromArgb(255, 255, 24)
+            };
+
+            CircleSegment[] circles = Cv2.HoughCircles(outp, HoughModes.Gradient, 5, 20, 30, 35, 0, 20);
             var dstclone = dst.Clone();
             foreach (CircleSegment segment in circles) {
                 int col = outp.At<int>((int)segment.Center.Y, (int)segment.Center.X);
 
                 if (col < 0) {
-                    Cv2.Circle(dstclone, (int)segment.Center.X, (int)segment.Center.Y, (int)segment.Radius, new Scalar(0, 255, 0), 2);
+                    Vec3b ccol = dst.At<Vec3b>((int)segment.Center.Y, (int)segment.Center.X);
+                    Color ccolAsColor = Color.FromArgb(ccol[2], ccol[1], ccol[0]);
+                    Color usedColor = Color.Orange;
+                    float lowestDistance = float.MaxValue;
+                    foreach (Color cs in colorMatchers) {
+                        float colorDist = MathF.Sqrt(
+                            MathF.Pow(ccolAsColor.R - cs.R, 2) +
+                            MathF.Pow(ccolAsColor.G - cs.G, 2) +
+                            MathF.Pow(ccolAsColor.B - cs.B, 2)
+                        );
+
+                        if (colorDist < lowestDistance) {
+                            usedColor = cs;
+                            lowestDistance = colorDist;
+                        }
+                    }
+
+
+                    Cv2.Circle(dstclone, (int)segment.Center.X, (int)segment.Center.Y, (int)segment.Radius, new Scalar(usedColor.B, usedColor.G, usedColor.R), 2);
                 }
             }
 
