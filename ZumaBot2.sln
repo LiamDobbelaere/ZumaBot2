@@ -1,0 +1,30 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.32014.148
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZumaBot2", "ZumaBot2.csproj", "{FFF0DA1B-F3B6-4954-B0CF-478A55F3667D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{AAB3447C-F19E-4EB0-8B7A-CBD1F6EE448C}"
+	ProjectSection(SolutionItems) = preProject
+		Extensions.cs = Extensions.cs
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FFF0DA1B-F3B6-4954-B0CF-478A55F3667D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FFF0DA1B-F3B6-4954-B0CF-478A55F3667D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FFF0DA1B-F3B6-4954-B0CF-478A55F3667D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FFF0DA1B-F3B6-4954-B0CF-478A55F3667D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C4F3AEC3-7E02-4F5C-86CA-322270E5B07E}
+	EndGlobalSection
+EndGlobal
