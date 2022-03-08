@@ -14,11 +14,21 @@ namespace ZumaBot2 {
 
         private const int defaultFrameDelay = 16;
 
+        private List<Color> colorMatchers = new List<Color>();
+        private List<Color> fixedColors = new List<Color>();
+
+
         public MainForm() {
             InitializeComponent();
         }
 
         private void MainForm_Load(object sender, EventArgs e) {
+            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Red, "ct_red.png");
+            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Green, "ct_green.png");
+            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Blue, "ct_blue.png");
+            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Yellow, "ct_yellow.png");
+            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Violet, "ct_violet.png");
+
             FindGameWindow();
 
             captureThread = new Thread(() => CaptureThread());
@@ -99,10 +109,6 @@ namespace ZumaBot2 {
         private void CDTester(Mat original) {
             using var mFrogTemplate = new Mat(GetAssetPath("frog_test.png"));
 
-            Dictionary<string, int> selParams = new Dictionary<string, int>();
-            selParams["blockSize"] = 8;
-            selParams["k"] = 1;
-
             using ORB orb = ORB.Create();
             KeyPoint[] keypointsOriginal;
             using var descriptorsOriginal = new Mat();
@@ -135,7 +141,32 @@ namespace ZumaBot2 {
 
             Cv2.BitwiseAnd(coloredFroggy, croppedFroggy.CvtColor(ColorConversionCodes.GRAY2BGR), coloredFroggy);
 
-            Cv2.ImShow("frog", coloredFroggy);
+            Color mostPrevalent = FindMostPrevalentColor(coloredFroggy.ToBitmap());
+
+            Cv2.Rectangle(coloredFroggy, new Rect(0, 0, 32, 32), new Scalar(mostPrevalent.B, mostPrevalent.G, mostPrevalent.R), -1);
+
+            Cv2.ImShow("froggy", coloredFroggy);
+
+            /*
+            ConnectedComponents frogCc = Cv2.ConnectedComponentsEx(croppedFroggy);
+            using var mCroppedFroggyLargest = new Mat();
+            if (frogCc.Blobs.Count > 0) {
+                frogCc.FilterByBlob(croppedFroggy, mCroppedFroggyLargest, frogCc.GetLargestBlob());
+
+                CircleSegment[] circles = Cv2.HoughCircles(mCroppedFroggyLargest, HoughModes.Gradient, 16, 1, 50, 50, 1, 50);
+                foreach (CircleSegment segment in circles) {
+                    Cv2.Circle(
+                         coloredFroggy,
+                         (int)segment.Center.X,
+                         (int)segment.Center.Y,
+                         (int)segment.Radius,
+                         Scalar.Blue,
+                         2
+                     );
+                }
+
+                //Cv2.ImShow("frog", coloredFroggy);
+            }*/
 
             /*using var mFinalOut = new Mat();
             Cv2.DrawMatches(mFrogTemplateGray, keypointsTemplate, mOriginalGray, keypointsOriginal, orderedMatches, mFinalOut);
@@ -145,32 +176,34 @@ namespace ZumaBot2 {
 
             Cv2.ImShow("out2", mFinalOut);*/
 
+            /*
+            Dictionary<string, int> selParams = new Dictionary<string, int>();
+            selParams["p1"] = 100;
+            selParams["p2"] = 100;
+            selParams["minRadius"] = 0;
+            selParams["maxRadius"] = 32;
+            selParams["minDist"] = 1;
+            selParams["dp"] = 1;
 
+            CircleSegment[] circles = Cv2.HoughCircles(mCroppedFroggyLargest, HoughModes.Gradient, 16, 20, 30, 80, 4, 25);
+            foreach (CircleSegment segment in circles) {
+                Cv2.Circle(
+                     mCroppedFroggyLargest,
+                     (int)segment.Center.X,
+                     (int)segment.Center.Y,
+                     (int)segment.Radius,
+                     Scalar.Blue,
+                     2
+                 );
+            }
 
-            /*var createCb = (string key) => new TrackbarCallbackNative((int v, IntPtr ptr) => {
-                selParams[key] = v;
-            */
-
-
-            //});
-
-            /*new Window("Settings");
-            Cv2.CreateTrackbar("blockSize", "Settings", 250, createCb("blockSize"));
-            Cv2.CreateTrackbar("k", "Settings", 250, createCb("k"));*/
+            Cv2.ImShow("Froggy", mCroppedFroggyLargest);*/
 
             Cv2.WaitKey(defaultFrameDelay);
         }
 
         private void CaptureThread() {
             using Graphics g = Graphics.FromImage(gameWindow);
-            List<Color> colorMatchers = new List<Color>();
-            List<Color> fixedColors = new List<Color>();
-
-            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Red, "ct_red.png");
-            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Green, "ct_green.png");
-            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Blue, "ct_blue.png");
-            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Yellow, "ct_yellow.png");
-            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Violet, "ct_violet.png");
 
             while (true) {
                 g.CopyFromScreen(windowLocation.X, windowLocation.Y, 0, 0, gameWindow.Size);
@@ -182,7 +215,7 @@ namespace ZumaBot2 {
                     .ToMat()
                     .CvtColor(ColorConversionCodes.RGB2HSV)
                     .ExtractChannel(1)
-                    .Threshold(100, 255, ThresholdTypes.Binary);
+                    .Threshold(128, 255, ThresholdTypes.Binary);
 
                 CDTester(mGameColor);
 
@@ -268,5 +301,47 @@ namespace ZumaBot2 {
 
             return center;
         }
+
+        private Color FindMostPrevalentColor(Bitmap b) {
+            float closestDistance = float.MaxValue;
+            Color fixedColor = Color.White;
+
+            for (int y = 0; y < b.Height; y+= 4) {
+                if (y >= b.Height) {
+                    continue;
+                }
+
+                for (int x = 0; x < b.Width; x += 4) {
+                    if (x >= b.Width) {
+                        continue;
+                    }
+
+                    Color bColor = b.GetPixel(x, y);
+                    if (bColor.R == 0 && bColor.G == 0 && bColor.B == 0) {
+                        continue;
+                    }
+                    
+                    for (int k = 0; k < colorMatchers.Count; k++) {
+                        float distance = bColor.Distance(colorMatchers[k]);
+                        if (distance < closestDistance) {
+                            closestDistance = distance;
+                            fixedColor = fixedColors[k];
+                        }
+                    }
+                }
+            }
+
+            return fixedColor;
+        }
+    }
+}
+
+public static class Extensions {
+    public static float Distance(this Color a, Color b) {
+        return MathF.Sqrt(
+            MathF.Pow(a.R - b.R, 2) +
+            MathF.Pow(a.G - b.G, 2) +
+            MathF.Pow(a.B - b.B, 2)
+        );
     }
 }
