@@ -9,6 +9,7 @@ namespace ZumaBot2 {
         private bool foundGameWindow = false;
 
         private Bitmap gameWindow = new Bitmap(640, 480, PixelFormat.Format32bppRgb);
+        private Bitmap froggy = new Bitmap(128, 128, PixelFormat.Format32bppRgb);
         private Thread captureThread;
 
         private const int defaultFrameDelay = 16;
@@ -96,31 +97,55 @@ namespace ZumaBot2 {
         }
 
         private void CDTester(Mat original) {
-            using var mFrogTemplate = new Mat(GetAssetPath("frog.png"));
+            using var mFrogTemplate = new Mat(GetAssetPath("frog_test.png"));
 
             Dictionary<string, int> selParams = new Dictionary<string, int>();
             selParams["blockSize"] = 8;
             selParams["k"] = 1;
 
             using ORB orb = ORB.Create();
-            KeyPoint[] kpO;
-            using var oaO = new Mat();
+            KeyPoint[] keypointsOriginal;
+            using var descriptorsOriginal = new Mat();
 
-            KeyPoint[] kpT;
-            using var oaT = new Mat();
+            KeyPoint[] keypointsTemplate;
+            using var descriptorsTemplate = new Mat();
 
-            orb.DetectAndCompute(mFrogTemplate, null, out kpT, oaT);
-            orb.DetectAndCompute(original, null, out kpO, oaO);
+            using var mOriginalGray = original.CvtColor(ColorConversionCodes.BGR2GRAY);
+            using var mFrogTemplateGray = mFrogTemplate.CvtColor(ColorConversionCodes.BGR2GRAY);
+
+            orb.DetectAndCompute(mOriginalGray, null, out keypointsOriginal, descriptorsOriginal);
+            orb.DetectAndCompute(mFrogTemplateGray, null, out keypointsTemplate, descriptorsTemplate);
 
             using var bfm = BFMatcher.Create("BruteForce-Hamming");
-            var matches = bfm.Match(oaT, oaO);
+            var matches = bfm.Match(descriptorsTemplate, descriptorsOriginal);
 
-            var orderedMatches = matches; //matches.OrderBy((k) => k.Distance).Take(10).ToArray();
-            MessageBox.Show(orderedMatches.Length.ToString());
+            var orderedMatches = matches.OrderBy((k) => k.Distance).Take(10).ToArray();
 
-            using var mFinalOut = new Mat();
-            Cv2.DrawMatches(mFrogTemplate, kpT, original, kpO, orderedMatches, mFinalOut);
-            Cv2.ImShow("out2", mFinalOut);
+            Point com = CenterOfMass(keypointsOriginal, orderedMatches);
+
+            using Graphics g = Graphics.FromImage(froggy);
+            g.DrawImage(gameWindow, -(com.X - froggy.Width / 2), -(com.Y - froggy.Height / 2));
+
+            using var coloredFroggy = froggy.ToMat();
+            using var croppedFroggy = froggy
+                .ToMat()
+                .CvtColor(ColorConversionCodes.RGB2HSV)
+                .ExtractChannel(1)
+                .Threshold(100, 255, ThresholdTypes.Binary);
+
+            Cv2.BitwiseAnd(coloredFroggy, croppedFroggy.CvtColor(ColorConversionCodes.GRAY2BGR), coloredFroggy);
+
+            Cv2.ImShow("frog", coloredFroggy);
+
+            /*using var mFinalOut = new Mat();
+            Cv2.DrawMatches(mFrogTemplateGray, keypointsTemplate, mOriginalGray, keypointsOriginal, orderedMatches, mFinalOut);
+            Cv2.PutText(mFinalOut, orderedMatches.Length.ToString(), new Point(64, 64), HersheyFonts.HersheySimplex, 2f, Scalar.White, 2);
+            Cv2.PutText(mFinalOut, keypointsOriginal.Length.ToString() + ", " + keypointsTemplate.Length.ToString(), new Point(64, 128), HersheyFonts.HersheySimplex, 2f, Scalar.White, 2);
+            Cv2.Circle(mFinalOut, CenterOfMass(keypointsOriginal, orderedMatches) + new Point(mFrogTemplateGray.Width, 0), 16, Scalar.White, 2);
+
+            Cv2.ImShow("out2", mFinalOut);*/
+
+
 
             /*var createCb = (string key) => new TrackbarCallbackNative((int v, IntPtr ptr) => {
                 selParams[key] = v;
@@ -159,12 +184,11 @@ namespace ZumaBot2 {
                     .ExtractChannel(1)
                     .Threshold(100, 255, ThresholdTypes.Binary);
 
-
                 CDTester(mGameColor);
 
                 // Get rid of small noise speckles
                 Cv2.FilterSpeckles(mGame, 0, 16, 8);
-                
+
                 // Fill holes
                 using Mat kernel = Cv2.GetStructuringElement(MorphShapes.Ellipse, new OpenCvSharp.Size(8, 8));
                 Cv2.MorphologyEx(mGame, mGame, MorphTypes.Close, kernel);
@@ -229,6 +253,20 @@ namespace ZumaBot2 {
                     Cv2.WaitKey(defaultFrameDelay);
                 });
             }
+        }
+
+        private Point CenterOfMass(KeyPoint[] keypoints, DMatch[] arr) {
+            Point center = new Point();
+
+            foreach (DMatch match in arr) {
+                center.X += keypoints[match.TrainIdx].Pt.ToPoint().X;
+                center.Y += keypoints[match.TrainIdx].Pt.ToPoint().Y;
+            }
+
+            center.X = (int)MathF.Round(center.X / (float)arr.Length);
+            center.Y = (int)MathF.Round(center.Y / (float)arr.Length);
+
+            return center;
         }
     }
 }
