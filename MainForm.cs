@@ -1,7 +1,21 @@
 using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using Point = OpenCvSharp.Point;
+
+public enum ZumaBallColor {
+    RED,
+    GREEN,
+    BLUE,
+    YELLOW,
+    VIOLET
+}
+
+public class ZumaBall {
+    public ZumaBallColor Color { get; set; }
+    public Point Location { get; set; }
+}
 
 namespace ZumaBot2 {
     public partial class MainForm : Form {
@@ -16,18 +30,24 @@ namespace ZumaBot2 {
 
         private List<Color> colorMatchers = new List<Color>();
         private List<Color> fixedColors = new List<Color>();
+        private List<ZumaBallColor> fixedZumaColors = new List<ZumaBallColor>();
 
+        private Point frogPosition = new Point();
+        private ZumaBallColor currentBallColor = ZumaBallColor.RED;
+        private List<ZumaBall> zumaBalls = new List<ZumaBall>();
+
+        private long lastGameplayTime;
 
         public MainForm() {
             InitializeComponent();
         }
 
         private void MainForm_Load(object sender, EventArgs e) {
-            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Red, "ct_red.png");
-            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Green, "ct_green.png");
-            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Blue, "ct_blue.png");
-            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Yellow, "ct_yellow.png");
-            ColorDetectionLoadInto(colorMatchers, fixedColors, Color.Violet, "ct_violet.png");
+            ColorDetectionLoadInto(Color.Red, ZumaBallColor.RED, "ct_red.png");
+            ColorDetectionLoadInto(Color.Green, ZumaBallColor.GREEN, "ct_green.png");
+            ColorDetectionLoadInto(Color.Blue, ZumaBallColor.BLUE, "ct_blue.png");
+            ColorDetectionLoadInto(Color.Yellow, ZumaBallColor.YELLOW, "ct_yellow.png");
+            ColorDetectionLoadInto(Color.Violet, ZumaBallColor.VIOLET, "ct_violet.png");
 
             FindGameWindow();
 
@@ -91,7 +111,7 @@ namespace ZumaBot2 {
             }
         }
 
-        private void ColorDetectionLoadInto(List<Color> colorMatchers, List<Color> fixedColors, Color target, string assetName) {
+        private void ColorDetectionLoadInto(Color target, ZumaBallColor zumaTarget, string assetName) {
             string fullPath = GetAssetPath(assetName);
 
             Bitmap bmp = new Bitmap(fullPath);
@@ -102,11 +122,12 @@ namespace ZumaBot2 {
 
                     colorMatchers.Add(c);
                     fixedColors.Add(target);
+                    fixedZumaColors.Add(zumaTarget);
                 }
             }
         }
 
-        private void CDTester(Mat original) {
+        private void DetectFrog(Mat original) {
             using var mFrogTemplate = new Mat(GetAssetPath("frog_test.png"));
 
             using ORB orb = ORB.Create();
@@ -129,6 +150,9 @@ namespace ZumaBot2 {
 
             Point com = CenterOfMass(keypointsOriginal, orderedMatches);
 
+            // GAME - Get frog position
+            frogPosition = com;
+
             using Graphics g = Graphics.FromImage(froggy);
             g.DrawImage(gameWindow, -(com.X - froggy.Width / 2), -(com.Y - froggy.Height / 2));
 
@@ -141,9 +165,13 @@ namespace ZumaBot2 {
 
             Cv2.BitwiseAnd(coloredFroggy, croppedFroggy.CvtColor(ColorConversionCodes.GRAY2BGR), coloredFroggy);
 
-            Color mostPrevalent = FindMostPrevalentColor(coloredFroggy.ToBitmap());
+            // GAME - Get frog ball color
+            int mostPrevalentIndex = FindMostPrevalentColorIndex(coloredFroggy.ToBitmap());
+            Color frogBallColor = fixedColors[mostPrevalentIndex];
+            currentBallColor = fixedZumaColors[mostPrevalentIndex];
 
-            Cv2.Rectangle(coloredFroggy, new Rect(0, 0, 32, 32), new Scalar(mostPrevalent.B, mostPrevalent.G, mostPrevalent.R), -1);
+            Cv2.Rectangle(coloredFroggy, new Rect(0, 0, 32, 32), new Scalar(frogBallColor.B, frogBallColor.G, frogBallColor.R), -1);
+            Cv2.PutText(coloredFroggy, currentBallColor.ToString(), new Point(64, 64), HersheyFonts.HersheyPlain, 1, Scalar.White);
 
             Cv2.ImShow("froggy", coloredFroggy);
 
@@ -215,9 +243,9 @@ namespace ZumaBot2 {
                     .ToMat()
                     .CvtColor(ColorConversionCodes.RGB2HSV)
                     .ExtractChannel(1)
-                    .Threshold(128, 255, ThresholdTypes.Binary);
+                    .Threshold(100, 255, ThresholdTypes.Binary);
 
-                CDTester(mGameColor);
+                DetectFrog(mGameColor);
 
                 // Get rid of small noise speckles
                 Cv2.FilterSpeckles(mGame, 0, 16, 8);
@@ -240,6 +268,7 @@ namespace ZumaBot2 {
 
                 // Color them ballz
                 CircleSegment[] circles = Cv2.HoughCircles(mGameLargestBlob, HoughModes.Gradient, 5, 20, 30, 35, 0, 20);
+                zumaBalls.Clear();
                 foreach (CircleSegment segment in circles) {
                     int col = mGameLargestBlob.At<int>((int)segment.Center.Y, (int)segment.Center.X);
 
@@ -267,6 +296,7 @@ namespace ZumaBot2 {
 
                         if (usedColorIndex >= 0) {
                             Color fixedColor = fixedColors[usedColorIndex];
+                            ZumaBallColor fixedZumaColor = fixedZumaColors[usedColorIndex];
 
                             Cv2.Circle(
                                 mGameColor,
@@ -276,15 +306,43 @@ namespace ZumaBot2 {
                                 new Scalar(fixedColor.B, fixedColor.G, fixedColor.R),
                                 2
                             );
+
+                            zumaBalls.Add(new ZumaBall {
+                                Location = segment.Center.ToPoint(),
+                                Color = fixedZumaColor
+                            });
                         }
                     }
+
+                    Cv2.PutText(mGameColor, lastGameplayTime.ToString(), new Point(64, 64), HersheyFonts.HersheyPlain, 2, Scalar.White);
                 }
 
+                if (new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds() - lastGameplayTime > 1500) {
+                    PerformGameplay();
+
+                    lastGameplayTime = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+                }
 
                 this.Invoke(() => {
                     Cv2.ImShow("out", mGameColor);
                     Cv2.WaitKey(defaultFrameDelay);
                 });
+            }
+        }
+
+        private void PerformGameplay() {
+            zumaBalls
+                .FindAll((ball) => ball.Color == currentBallColor)
+                .OrderBy((ball) => ball.Location.DistanceTo(frogPosition))
+                .Take(1);
+
+            if (zumaBalls.Count > 0) {
+                ZumaBall ball = zumaBalls[0];
+                // click mouse at windowlocation + ball location
+
+                MouseOperations.SetCursorPosition(windowLocation.X + ball.Location.X, windowLocation.Y + ball.Location.Y);
+                MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftDown);
+                MouseOperations.MouseEvent(MouseOperations.MouseEventFlags.LeftUp);
             }
         }
 
@@ -302,9 +360,9 @@ namespace ZumaBot2 {
             return center;
         }
 
-        private Color FindMostPrevalentColor(Bitmap b) {
+        private int FindMostPrevalentColorIndex(Bitmap b) {
             float closestDistance = float.MaxValue;
-            Color fixedColor = Color.White;
+            int fixedColorIndex = 0;
 
             for (int y = 0; y < b.Height; y+= 4) {
                 if (y >= b.Height) {
@@ -325,13 +383,13 @@ namespace ZumaBot2 {
                         float distance = bColor.Distance(colorMatchers[k]);
                         if (distance < closestDistance) {
                             closestDistance = distance;
-                            fixedColor = fixedColors[k];
+                            fixedColorIndex = k;
                         }
                     }
                 }
             }
 
-            return fixedColor;
+            return fixedColorIndex;
         }
     }
 }
@@ -343,5 +401,68 @@ public static class Extensions {
             MathF.Pow(a.G - b.G, 2) +
             MathF.Pow(a.B - b.B, 2)
         );
+    }
+}
+
+public class MouseOperations {
+    [Flags]
+    public enum MouseEventFlags {
+        LeftDown = 0x00000002,
+        LeftUp = 0x00000004,
+        MiddleDown = 0x00000020,
+        MiddleUp = 0x00000040,
+        Move = 0x00000001,
+        Absolute = 0x00008000,
+        RightDown = 0x00000008,
+        RightUp = 0x00000010
+    }
+
+    [DllImport("user32.dll", EntryPoint = "SetCursorPos")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out MousePoint lpMousePoint);
+
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);
+
+    public static void SetCursorPosition(int x, int y) {
+        SetCursorPos(x, y);
+    }
+
+    public static void SetCursorPosition(MousePoint point) {
+        SetCursorPos(point.X, point.Y);
+    }
+
+    public static MousePoint GetCursorPosition() {
+        MousePoint currentMousePoint;
+        var gotPoint = GetCursorPos(out currentMousePoint);
+        if (!gotPoint) { currentMousePoint = new MousePoint(0, 0); }
+        return currentMousePoint;
+    }
+
+    public static void MouseEvent(MouseEventFlags value) {
+        MousePoint position = GetCursorPosition();
+
+        mouse_event
+            ((int)value,
+             position.X,
+             position.Y,
+             0,
+             0)
+            ;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MousePoint {
+        public int X;
+        public int Y;
+
+        public MousePoint(int x, int y) {
+            X = x;
+            Y = y;
+        }
     }
 }
