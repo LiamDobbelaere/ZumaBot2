@@ -22,6 +22,14 @@ namespace ZumaBot2 {
         private Point windowLocation;
         private bool foundGameWindow = false;
 
+        private Dictionary<ZumaBallColor, Color> zumaColorToFixed = new Dictionary<ZumaBallColor, Color>() {
+            [ZumaBallColor.RED] = Color.Red,
+            [ZumaBallColor.GREEN] = Color.Green,
+            [ZumaBallColor.BLUE] = Color.Blue,
+            [ZumaBallColor.YELLOW] = Color.Yellow,
+            [ZumaBallColor.VIOLET] = Color.Violet,
+        };
+
         private Bitmap gameWindow = new Bitmap(640, 480, PixelFormat.Format32bppRgb);
         private Bitmap froggy = new Bitmap(128, 128, PixelFormat.Format32bppRgb);
         private Thread captureThread;
@@ -36,13 +44,18 @@ namespace ZumaBot2 {
         private ZumaBallColor currentBallColor = ZumaBallColor.RED;
         private List<ZumaBall> zumaBalls = new List<ZumaBall>();
 
+        private ZumaBall lastTarget;
         private long lastGameplayTime;
+        private long startDelay = 10000;
+        private long bootTime = 0;
 
         public MainForm() {
             InitializeComponent();
         }
 
         private void MainForm_Load(object sender, EventArgs e) {
+            bootTime = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+
             ColorDetectionLoadInto(Color.Red, ZumaBallColor.RED, "ct_red.png");
             ColorDetectionLoadInto(Color.Green, ZumaBallColor.GREEN, "ct_green.png");
             ColorDetectionLoadInto(Color.Blue, ZumaBallColor.BLUE, "ct_blue.png");
@@ -306,6 +319,8 @@ namespace ZumaBot2 {
                                 new Scalar(fixedColor.B, fixedColor.G, fixedColor.R),
                                 2
                             );
+                            Cv2.PutText(mGameColor, fixedZumaColor.ToString(), segment.Center.ToPoint(), HersheyFonts.HersheyPlain, 1, Scalar.White, 2);
+
 
                             zumaBalls.Add(new ZumaBall {
                                 Location = segment.Center.ToPoint(),
@@ -315,12 +330,21 @@ namespace ZumaBot2 {
                     }
 
                     Cv2.PutText(mGameColor, lastGameplayTime.ToString(), new Point(64, 64), HersheyFonts.HersheyPlain, 2, Scalar.White);
+                    Cv2.Circle(mGameColor, frogPosition, 32, Color2Scalar(zumaColorToFixed[currentBallColor]), 2);
+                    
+                    if (lastTarget != null) {
+                        Cv2.Circle(mGameColor, lastTarget.Location, 32, Color2Scalar(zumaColorToFixed[lastTarget.Color]), 2);
+                    }
+
                 }
 
-                if (new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds() - lastGameplayTime > 1500) {
-                    PerformGameplay();
+                long timeStamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+                if (timeStamp - bootTime > startDelay) {
+                    if (timeStamp - lastGameplayTime > 500) {
+                        PerformGameplay();
 
-                    lastGameplayTime = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+                        lastGameplayTime = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+                    }
                 }
 
                 this.Invoke(() => {
@@ -331,13 +355,15 @@ namespace ZumaBot2 {
         }
 
         private void PerformGameplay() {
-            zumaBalls
+            ZumaBall[] matchingBalls = zumaBalls
                 .FindAll((ball) => ball.Color == currentBallColor)
                 .OrderBy((ball) => ball.Location.DistanceTo(frogPosition))
-                .Take(1);
+                .Take(1)
+                .ToArray();
 
-            if (zumaBalls.Count > 0) {
-                ZumaBall ball = zumaBalls[0];
+            if (matchingBalls.Length > 0) {
+                ZumaBall ball = matchingBalls[0];
+                lastTarget = ball;
                 // click mouse at windowlocation + ball location
 
                 MouseOperations.SetCursorPosition(windowLocation.X + ball.Location.X, windowLocation.Y + ball.Location.Y);
@@ -358,6 +384,10 @@ namespace ZumaBot2 {
             center.Y = (int)MathF.Round(center.Y / (float)arr.Length);
 
             return center;
+        }
+
+        private Scalar Color2Scalar(Color color) {
+            return new Scalar(color.B, color.G, color.R);
         }
 
         private int FindMostPrevalentColorIndex(Bitmap b) {
